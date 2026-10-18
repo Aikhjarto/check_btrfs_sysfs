@@ -1,0 +1,69 @@
+# bash completion for check_btrfs_sysfs                      -*- shell-script -*-
+
+_check_btrfs_sysfs()
+{
+    local cur=${COMP_WORDS[COMP_CWORD]} prev=${COMP_WORDS[COMP_CWORD-1]}
+    # --option=value: bash splits at the =
+    if [[ $cur == = ]]; then
+        cur=
+    elif [[ $prev == = && $COMP_CWORD -ge 2 ]]; then
+        prev=${COMP_WORDS[COMP_CWORD-2]}
+    fi
+    COMPREPLY=()
+
+    case $prev in
+        -m | --mountpoint)
+            # the local btrfs mount points; for a remote host (-H) any directory
+            local word remote=
+            for word in "${COMP_WORDS[@]:1:COMP_CWORD-1}"; do
+                [[ $word == -H || $word == --hostname ]] && remote=1
+            done
+            if [[ -z $remote && -r ${BTRFS_MOUNTS:-/proc/self/mounts} ]]; then
+                local mountpoints=() device mountpoint fstype rest
+                while read -r device mountpoint fstype rest; do
+                    [[ $fstype == btrfs ]] && mountpoints+=("$mountpoint")
+                done < "${BTRFS_MOUNTS:-/proc/self/mounts}"
+                mapfile -t COMPREPLY < <(compgen -W "${mountpoints[*]}" -- "$cur")
+            else
+                compopt -o filenames 2>/dev/null
+                mapfile -t COMPREPLY < <(compgen -d -- "$cur")
+            fi
+            return
+            ;;
+        -e | --errors)
+            mapfile -t COMPREPLY < <(compgen -W 'critical warning ignore' -- "$cur")
+            return
+            ;;
+        -H | --hostname)
+            mapfile -t COMPREPLY < <(compgen -A hostname -- "$cur")
+            return
+            ;;
+        -l | --user)
+            mapfile -t COMPREPLY < <(compgen -u -- "$cur")
+            return
+            ;;
+        -i | --identity)
+            compopt -o filenames 2>/dev/null
+            mapfile -t COMPREPLY < <(compgen -f -- "$cur")
+            return
+            ;;
+        --ssh)
+            compopt -o filenames 2>/dev/null
+            mapfile -t COMPREPLY < <(compgen -c -- "$cur")
+            return
+            ;;
+        -u | --unallocated-warning | -U | --unallocated-critical | -w | --metadata-warning | \
+            -c | --metadata-critical | -d | --data-warning | -D | --data-critical | \
+            -p | --port | -o | --ssh-option | -t | --timeout)
+            return
+            ;;
+    esac
+
+    # no positional arguments: offer the options
+    mapfile -t COMPREPLY < <(compgen -W '-h --help -V --version -m --mountpoint
+        -u --unallocated-warning -U --unallocated-critical -w --metadata-warning
+        -c --metadata-critical -d --data-warning -D --data-critical -e --errors
+        -t --timeout -H --hostname -l --user -p --port -i --identity
+        -o --ssh-option --ssh' -- "$cur")
+}
+complete -F _check_btrfs_sysfs check_btrfs_sysfs check_btrfs_sysfs.py

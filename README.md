@@ -62,6 +62,17 @@ install -m 755 check_btrfs_sysfs.py /usr/lib/nagios/plugins/check_btrfs_sysfs
 
 or `pip install .`, which creates a `check_btrfs_sysfs` command.
 
+## Bash completion
+
+`completions/check_btrfs_sysfs` completes the options, the local btrfs mount
+points for `-m` (any directory with `-H`), the states for `-e`, host names,
+users and the key file. The packages install it; otherwise copy it to
+bash-completion's directory:
+
+```sh
+install -D -m 0644 completions/check_btrfs_sysfs /usr/share/bash-completion/completions/check_btrfs_sysfs
+```
+
 ## Usage
 
 ```
