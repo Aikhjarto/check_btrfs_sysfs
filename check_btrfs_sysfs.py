@@ -14,11 +14,12 @@ remote host over SSH, so nothing has to be installed there.
 from __future__ import annotations
 
 import argparse
+import math
 import re
 import subprocess
 import sys
 
-__version__ = "0.2"
+__version__ = "0.3"
 
 OK, WARNING, CRITICAL, UNKNOWN = 0, 1, 2, 3
 STATE_NAMES = {OK: "OK", WARNING: "WARNING", CRITICAL: "CRITICAL", UNKNOWN: "UNKNOWN"}
@@ -255,6 +256,24 @@ class Filesystem:
 # --------------------------------------------------------------------------
 
 
+def balance_hint(mount: str, reclaimable: int, fill: float) -> list[str]:
+    """Lines suggesting a balance of the data chunks, which are fill percent full on average.
+
+    sysfs has no usage per chunk, only the average. -dusage=N relocates the
+    chunks that are at most N percent full, and at least one chunk is not
+    fuller than the average, so N = the average rounded up relocates at least
+    that one, if the other chunks have room for its data.
+    """
+    if fill <= 50:
+        return [f"  about {fmt_bytes(reclaimable)} of the data chunks are unused, "
+                f"'btrfs balance start -dusage=50 {mount}' returns most of it"]
+    usage = min(100, math.ceil(fill / 5) * 5)
+    return [f"  about {fmt_bytes(reclaimable)} of the data chunks are unused, but they are "
+            f"{fill:.0f}% full on average, so -dusage=50 may relocate nothing",
+            f"  'btrfs balance start -dusage={usage} {mount}' relocates at least one chunk; "
+            f"if it fails with 'No space left on device', delete data first"]
+
+
 def check_filesystem(mount: str, fs: Filesystem, args) -> tuple[int, list[str], str,
                                                                   list[str], list[str]]:
     """State, problems, OK summary, detail lines and performance data."""
@@ -316,11 +335,11 @@ def check_filesystem(mount: str, fs: Filesystem, args) -> tuple[int, list[str], 
     perfdata.append(perf(f"{mount}_data_used", data_used, "B", "", "", 0, round(data_usable)))
 
     # space in partly used data chunks that a balance would return
-    reclaimable = (fs.int("allocation/data/total_bytes") - fs.int("allocation/data/bytes_used"))
-    reclaimable = int(reclaimable * fs.factor("data"))
+    data_total = fs.int("allocation/data/total_bytes")
+    data_bytes_used = fs.int("allocation/data/bytes_used")
+    reclaimable = int((data_total - data_bytes_used) * fs.factor("data"))
     if unalloc_state != OK and reclaimable >= 1024 ** 3:
-        details.append(f"  about {fmt_bytes(reclaimable)} of the data chunks are unused, "
-                       f"'btrfs balance start -dusage=50 {mount}' returns most of it")
+        details.extend(balance_hint(mount, reclaimable, 100 * data_bytes_used / data_total))
 
     errors = fs.errors()
     total_errors = sum(sum(c.values()) for c in errors.values())

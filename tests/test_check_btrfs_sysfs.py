@@ -4,6 +4,7 @@
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import unittest
@@ -128,7 +129,25 @@ class CheckTest(unittest.TestCase):
         state, text = run([], output(fs))
         self.assertEqual(state, cb.CRITICAL)
         self.assertIn("unallocated 0 B (< 1.0 GiB)", text)
-        self.assertIn("btrfs balance start -dusage=50 /", text)
+        # 15 GiB in 20 GiB - 64 MiB of data chunks: 75.2% full on average, rounded up to 80
+        self.assertIn("75% full on average, so -dusage=50 may relocate nothing", text)
+        self.assertIn("'btrfs balance start -dusage=80 /' relocates at least one chunk", text)
+
+    def test_fully_allocated_mostly_empty_chunks(self):
+        fs = sysfs(device_gib=21, data_total=20 * GiB - 64 * MiB, data_used=8 * GiB)
+        state, text = run([], output(fs))
+        self.assertEqual(state, cb.CRITICAL)
+        self.assertIn("'btrfs balance start -dusage=50 /' returns most of it", text)
+        self.assertNotIn("on average", text)
+
+    def test_balance_hint_usage(self):
+        def usage(fill):
+            return re.search(r"-dusage=(\d+) /' relocates", "\n".join(
+                cb.balance_hint("/", 2 * GiB, fill))).group(1)
+        self.assertEqual(usage(50.1), "55")
+        self.assertEqual(usage(93.3), "95")
+        self.assertEqual(usage(95.0), "95")
+        self.assertEqual(usage(99.9), "100")
 
     def test_unallocated_warning(self):
         fs = sysfs(device_gib=23, data_total=20 * GiB, data_used=19.5 * GiB)

@@ -24,7 +24,9 @@ can fail with "No space left on device" while `df` still shows gigabytes free:
 
 This usually happens after data was written and deleted: the data chunks are
 only partly used, but still allocated. A balance (`btrfs balance start
--dusage=50 /`) packs them together and returns the space.
+-dusage=50 /`) packs them together and returns the space. It only relocates
+chunks that are at most as full as the `-dusage` value, so it does nothing
+when all chunks are fuller than that.
 
 ## What is checked
 
@@ -38,7 +40,11 @@ only partly used, but still allocated. A balance (`btrfs balance start
 Metadata usage is computed against the space metadata could still grow to, so
 it only gets high when the file system is (almost) fully allocated. A
 balance hint with the reclaimable size is shown when unallocated space is
-low and at least 1 GiB of the data chunks is unused.
+low and at least 1 GiB of the data chunks is unused. sysfs only tells how
+full the data chunks are on average, not each chunk. If that average is
+above 50%, the hint suggests the average rounded up to 5 as the `-dusage`
+value: at least one chunk is not fuller than the average, so the balance
+relocates at least that one, if the other chunks have room for its data.
 
 Data usage has no thresholds by default, because `check_disk` usually covers
 it already. Set `-d`/`-D` to check it here as well.
@@ -107,7 +113,8 @@ BTRFS CRITICAL - /: unallocated 12.0 MiB (< 1.0 GiB), metadata 82% used (101.5 M
 [CRITICAL] unallocated 12.0 MiB of 30.0 GiB (1 device)
 [WARNING] metadata 82% used: 462.5 MiB of 564.0 MiB incl. 73.2 MiB global reserve (dup)
 [OK] data 91% used: 26.2 GiB of 28.8 GiB (single)
-  about 2.7 GiB of the data chunks are unused, 'btrfs balance start -dusage=50 /' returns most of it
+  about 2.7 GiB of the data chunks are unused, but they are 91% full on average, so -dusage=50 may relocate nothing
+  'btrfs balance start -dusage=95 /' relocates at least one chunk; if it fails with 'No space left on device', delete data first
 ```
 
 Device error counters stay until they are reset with
