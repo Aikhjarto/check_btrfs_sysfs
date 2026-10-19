@@ -19,7 +19,10 @@ import re
 import subprocess
 import sys
 
-__version__ = "0.3"
+__version__ = "0.3.1"
+
+# above this average fill of the data chunks, a balance gains too little to suggest one
+BALANCE_FULL_PERCENT = 80
 
 OK, WARNING, CRITICAL, UNKNOWN = 0, 1, 2, 3
 STATE_NAMES = {OK: "OK", WARNING: "WARNING", CRITICAL: "CRITICAL", UNKNOWN: "UNKNOWN"}
@@ -263,10 +266,21 @@ def balance_hint(mount: str, reclaimable: int, fill: float) -> list[str]:
     chunks that are at most N percent full, and at least one chunk is not
     fuller than the average, so N = the average rounded up relocates at least
     that one, if the other chunks have room for its data.
+
+    Relocating a chunk that is f percent full gains only 100 - f percent of
+    a chunk, as its data is written to new chunks. Above BALANCE_FULL_PERCENT
+    the hint says so instead of suggesting a value that gains next to
+    nothing.
     """
     if fill <= 50:
         return [f"  about {fmt_bytes(reclaimable)} of the data chunks are unused, "
                 f"'btrfs balance start -dusage=50 {mount}' returns most of it"]
+    if fill > BALANCE_FULL_PERCENT:
+        return [f"  about {fmt_bytes(reclaimable)} of the data chunks are unused, but they are "
+                f"{fill:.0f}% full on average, so a balance returns little",
+                f"  'btrfs balance start -dusage=50 {mount}' may still find some emptier chunks; "
+                f"otherwise delete data or grow the device and run "
+                f"'btrfs filesystem resize max {mount}'"]
     usage = min(100, math.ceil(fill / 5) * 5)
     return [f"  about {fmt_bytes(reclaimable)} of the data chunks are unused, but they are "
             f"{fill:.0f}% full on average, so -dusage=50 may relocate nothing",

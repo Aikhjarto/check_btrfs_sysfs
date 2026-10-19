@@ -145,9 +145,15 @@ class CheckTest(unittest.TestCase):
             return re.search(r"-dusage=(\d+) /' relocates", "\n".join(
                 cb.balance_hint("/", 2 * GiB, fill))).group(1)
         self.assertEqual(usage(50.1), "55")
-        self.assertEqual(usage(93.3), "95")
-        self.assertEqual(usage(95.0), "95")
-        self.assertEqual(usage(99.9), "100")
+        self.assertEqual(usage(75.2), "80")
+        self.assertEqual(usage(80.0), "80")
+
+    def test_balance_hint_full_chunks(self):
+        text = "\n".join(cb.balance_hint("/srv", 2 * GiB, 84.2))
+        self.assertIn("84% full on average, so a balance returns little", text)
+        self.assertIn("'btrfs balance start -dusage=50 /srv' may still find", text)
+        self.assertIn("'btrfs filesystem resize max /srv'", text)
+        self.assertNotIn("relocates at least one chunk", text)
 
     def test_unallocated_warning(self):
         fs = sysfs(device_gib=23, data_total=20 * GiB, data_used=19.5 * GiB)
